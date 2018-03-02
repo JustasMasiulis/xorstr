@@ -60,57 +60,57 @@ struct xorstr {
     JM_FORCEINLINE void _xorcpy(char* __restrict store,
                                const char* __restrict str) const noexcept
     {
-        if constexpr (N2 / 8) {
+        if constexpr (N2 / 8 > 0) {
             *reinterpret_cast<std::uint64_t*>(store) =
                 *reinterpret_cast<const std::uint64_t*>(str) ^ key8<N2>();
             _xorcpy<N2 - 8>(store + 8, str + 8);
         }
-        else if constexpr (N2 / 4) {
+        else if constexpr (N2 / 4 > 0) {
             *reinterpret_cast<std::uint32_t*>(store) =
                 *reinterpret_cast<const std::uint32_t*>(str) ^ key4<N2>();
             _xorcpy<N2 - 4>(store + 4, str + 4);
         }
-        else if constexpr (N2 / 2) {
+        else if constexpr (N2 / 2 > 0) {
             *reinterpret_cast<std::uint16_t*>(store) =
                 *reinterpret_cast<const std::uint16_t*>(str) ^ key2<N2>();
             _xorcpy<N2 - 2>(store + 2, str + 2);
         }
-        else if constexpr (N2) {
+        else if constexpr (N2 > 0) {
             *(store) = *(str) ^ key<N2>();
             _xorcpy<N2 - 1>(store + 1, str + 1);
         }
     }
-    JM_FORCEINLINE constexpr xorstr(const T (&str)[N]) noexcept : _storage{ 0 }
+    JM_FORCEINLINE xorstr(const T* __restrict str) noexcept
     {
         _xorcpy<N>(_storage, str);
     }
 
     template<std::size_t N2>
-    JM_FORCEINLINE void _crypt(volatile char* __restrict str) const noexcept
+    JM_FORCEINLINE static void _crypt(volatile char* __restrict str) noexcept
     {
-        if constexpr (N2 / 8) {
+        if constexpr (N2 / 8 > 0) {
             *reinterpret_cast<volatile std::uint64_t*>(str) ^= key8<N2>();
             _crypt<N2 - 8>(str + 8);
         }
-        else if constexpr (N2 / 4) {
+        else if constexpr (N2 / 4 > 0) {
             *reinterpret_cast<volatile std::uint32_t*>(str) ^= key4<N2>();
             _crypt<N2 - 4>(str + 4);
         }
-        else if constexpr (N2 / 2) {
+        else if constexpr (N2 / 2 > 0) {
             *reinterpret_cast<volatile std::uint16_t*>(str) ^= key2<N2>();
             _crypt<N2 - 2>(str + 2);
         }
-        else if constexpr (N2) {
+        else if constexpr (N2 > 0) {
             *(str) ^= key<N2>();
             _crypt<N2 - 1>(str + 1);
         }
     }
 
-    constexpr std::size_t size() { return N - 1; }
+    std::size_t size() const noexcept { return N - 1; }
 
     JM_FORCEINLINE void crypt() const noexcept { _crypt<N>(_storage); }
 
-    constexpr const T* get() const noexcept { return _storage; }
+    const T* get() const noexcept { return _storage; }
 
     JM_FORCEINLINE const T* crypt_get() const noexcept
     {
@@ -120,7 +120,7 @@ struct xorstr {
 };
 
 template<class T, std::size_t N>
-JM_FORCEINLINE constexpr auto make_xorstr(const T (&str)[N])
+JM_FORCEINLINE auto make_xorstr(const T (&str)[N])
 {
     return xorstr<T, N>(str);
 }
