@@ -1,8 +1,6 @@
 #pragma once
 #include <cstdint>
 #include <type_traits>
-#include "mmintrin.h"
-
 #ifndef JM_FORCEINLINE
 #ifdef _MSC_VER
 #define JM_FORCEINLINE __forceinline
@@ -25,6 +23,8 @@ namespace jm {
             return shifted;
         }
 
+#pragma warning(push)
+#pragma warning(disable : 4307)
         template<std::uint64_t S>
         JM_FORCEINLINE constexpr std::uint32_t pcg32() noexcept
         {
@@ -33,15 +33,15 @@ namespace jm {
             std::uint32_t  xorshifted =
                 static_cast<std::uint32_t>(((oldstate >> 18u) ^ oldstate) >> 27u);
             std::uint32_t rot = oldstate >> 59u;
-            return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+            return (xorshifted >> rot) | (xorshifted << ((1u + ~rot) & 31));
         }
+#pragma warning(pop)
 
     } // namespace detail
 
     template<class T, std::size_t N>
     struct xorstr {
-        static_assert(sizeof(T) == 1,
-                      "support for non char strings not implemented");
+        static_assert(sizeof(T) == 1, "support for wide strings not implemented");
         alignas(8) mutable T _storage[N];
 
         template<std::size_t S>
@@ -67,35 +67,45 @@ namespace jm {
         }
 
         template<std::size_t N2>
-        JM_FORCEINLINE void _xorcpy(char* __restrict store,
-                                    const char* __restrict str) const noexcept
+        constexpr static JM_FORCEINLINE void _xorcpy(char* __restrict store,
+                                                     const char* __restrict str)
         {
-            if constexpr (N2 / 8 > 0) {
-#ifdef __clang__
-                constexpr volatile auto my_key = key8<N2>();
-#else
-                constexpr auto my_key = key8<N2>();
-#endif
-                *reinterpret_cast<std::uint64_t*>(store) =
-                    *reinterpret_cast<const std::uint64_t*>(str) ^ my_key;
+            if constexpr (N2 * sizeof(T) / 8 > 0) {
+                constexpr auto k = key8<N2>();
+                store[7] = str[7] ^ static_cast<T>(k >> (64 - sizeof(T) * 8));
+                store[6] = str[6] ^ static_cast<T>(k >> (56 - sizeof(T) * 8));
+                store[5] = str[5] ^ static_cast<T>(k >> (48 - sizeof(T) * 8));
+                store[4] = str[4] ^ static_cast<T>(k >> (40 - sizeof(T) * 8));
+                store[3] = str[3] ^ static_cast<T>(k >> (32 - sizeof(T) * 8));
+                store[2] = str[2] ^ static_cast<T>(k >> (24 - sizeof(T) * 8));
+                store[1] = str[1] ^ static_cast<T>(k >> (16 - sizeof(T) * 8));
+                store[0] = str[0] ^ static_cast<T>(k >> (8 - sizeof(T) * 8));
                 _xorcpy<N2 - 8>(store + 8, str + 8);
             }
             else if constexpr (N2 / 4 > 0) {
-                *reinterpret_cast<std::uint32_t*>(store) =
-                    *reinterpret_cast<const std::uint32_t*>(str) ^ key4<N2>();
+                constexpr auto k = key4<N2>();
+
+                store[3] = str[3] ^ static_cast<T>(k >> (32 - sizeof(T) * 8));
+                store[2] = str[2] ^ static_cast<T>(k >> (24 - sizeof(T) * 8));
+                store[1] = str[1] ^ static_cast<T>(k >> (16 - sizeof(T) * 8));
+                store[0] = str[0] ^ static_cast<T>(k >> (8 - sizeof(T) * 8));
+
                 _xorcpy<N2 - 4>(store + 4, str + 4);
             }
             else if constexpr (N2 / 2 > 0) {
-                *reinterpret_cast<std::uint16_t*>(store) =
-                    *reinterpret_cast<const std::uint16_t*>(str) ^ key2<N2>();
+                constexpr auto k = key2<N2>();
+
+                store[1] = str[1] ^ static_cast<T>(k >> (16 - sizeof(T) * 8));
+                store[0] = str[0] ^ static_cast<T>(k >> (8 - sizeof(T) * 8));
                 _xorcpy<N2 - 2>(store + 2, str + 2);
             }
             else if constexpr (N2 > 0) {
-                *(store) = *(str) ^ key<N2>();
+                store[0] = str[0] ^ key<N2>();
                 _xorcpy<N2 - 1>(store + 1, str + 1);
             }
         }
-        JM_FORCEINLINE xorstr(const T* __restrict str) noexcept
+        JM_FORCEINLINE constexpr xorstr(const T* __restrict str) noexcept
+            : _storage{ 0 }
         {
             _xorcpy<N>(_storage, str);
         }
@@ -121,7 +131,7 @@ namespace jm {
             }
         }
 
-        std::size_t size() const noexcept { return N - 1; }
+        constexpr std::size_t size() const noexcept { return N - 1; }
 
         JM_FORCEINLINE void crypt() const noexcept { _crypt<N>(_storage); }
 
@@ -134,10 +144,11 @@ namespace jm {
         }
     };
 
-    template<class T, std::size_t N>
-    JM_FORCEINLINE auto make_xorstr(const T (&str)[N])
-    {
-        return xorstr<T, N>(str);
-    }
+#define xorstr(str)                                                           \
+    []() {                                                                    \
+        using XOR_T = std::decay_t<decltype(*str)>;                           \
+        constexpr ::jm::xorstr<XOR_T, sizeof(str) / sizeof(XOR_T)> xstr(str); \
+        return xstr;                                                          \
+    }()
 
 } // namespace jm
