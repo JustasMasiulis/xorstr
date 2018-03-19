@@ -9,9 +9,62 @@
 #endif // _MSC_VER
 #endif // !JM_FORCEINLINE
 
+#include <immintrin.h>
+
+
+#pragma once
+#include <cstddef>
+
+#define CRBN_STRING_EXPAND_10(n, x)                                    \
+    jmd_::c_at<n##0>(x), jmd_::c_at<n##1>(x), jmd_::c_at<n##2>(x),     \
+        jmd_::c_at<n##3>(x), jmd_::c_at<n##4>(x), jmd_::c_at<n##5>(x), \
+        jmd_::c_at<n##6>(x), jmd_::c_at<n##7>(x), jmd_::c_at<n##8>(x), \
+        jmd_::c_at<n##9>(x)
+
+#define CRBN_STRING_EXPAND_50(x)                                  \
+    CRBN_STRING_EXPAND_10(, x), CRBN_STRING_EXPAND_10(1, x),      \
+        CRBN_STRING_EXPAND_10(2, x), CRBN_STRING_EXPAND_10(3, x), \
+        CRBN_STRING_EXPAND_10(4, x)
+
+#define CRBN_STR(s)                                      \
+    ::jm::detail::string_builder<jm::detail::tstring_<>, \
+                                 CRBN_STRING_EXPAND_50(s)>::type
+
+namespace jmd_ {
+
+    template<std::size_t Idx, std::size_t M>
+    constexpr char c_at(const char (&str)[M]) noexcept
+    {
+        static_assert(M <= 50, "serializable member name too large.");
+        return (Idx < M) ? str[Idx] : 0;
+    }
+
+} // namespace jmd_
+
 namespace jm {
 
     namespace detail {
+
+        template<typename, char...>
+        struct string_builder;
+
+        template<typename T>
+        struct string_builder<T> {
+            using type = T;
+        };
+
+        template<template<char...> class S, char... Hs, char C, char... Cs>
+        struct string_builder<S<Hs...>, C, Cs...>
+            : std::conditional<C == '\0',
+                               string_builder<S<Hs...>>,
+                               string_builder<S<Hs..., C>, Cs...>>::type {};
+
+        template<char... Cs>
+        struct tstring_ {
+            constexpr static std::size_t size          = sizeof...(Cs);
+            constexpr static char        str[size + 1] = { Cs..., '\0' };
+        };
+
 
         JM_FORCEINLINE constexpr std::uint64_t rng_seed() noexcept
         {
@@ -28,127 +81,91 @@ namespace jm {
         template<std::uint64_t S>
         JM_FORCEINLINE constexpr std::uint32_t pcg32() noexcept
         {
-            constexpr auto seed     = rng_seed();
-            std::uint64_t  oldstate = S * 6364136223846793005ull + (seed | 1);
-            std::uint32_t  xorshifted =
-                static_cast<std::uint32_t>(((oldstate >> 18u) ^ oldstate) >> 27u);
+            constexpr auto seed       = rng_seed();
+            constexpr auto oldstate   = S * 6364136223846793005ull + (seed | 1);
+            std::uint32_t  xorshifted = static_cast<std::uint32_t>(
+                ((oldstate >> 18u) ^ oldstate) >> 27u);
             std::uint32_t rot = oldstate >> 59u;
             return (xorshifted >> rot) | (xorshifted << ((1u + ~rot) & 31));
         }
 #pragma warning(pop)
 
+        template<class T>
+        struct string_storage {
+            using storage_t = std::uint64_t[T::size * sizeof(T) / 8 + 1];
+            mutable storage_t storage;
+
+            constexpr string_storage() : storage{ 0 }
+            {
+                for (std::size_t i = 0; i < T::size; ++i)
+                    storage[i / 8] |=
+                        (std::uint64_t(T::str[i]) << ((i % 8) * 8));
+            }
+        };
+
     } // namespace detail
 
-    template<class T, std::size_t N>
+    template<class T>
     struct xorstr {
-        static_assert(sizeof(T) == 1, "support for wide strings not implemented");
-        alignas(8) mutable T _storage[N];
+        static_assert(sizeof(T) == 1,
+                      "support for wide strings not implemented");
+        static_assert(
+            T::size <= 32,
+            "support for strings longer than 32 characters not implemented");
+        mutable std::uint64_t _storage[4];
 
-        template<std::size_t S>
-        constexpr static std::uint8_t key()
-        {
-            return static_cast<std::uint8_t>(detail::pcg32<S>());
-        }
-        template<std::size_t S>
-        constexpr static std::uint16_t key2()
-        {
-            return static_cast<std::uint16_t>(detail::pcg32<S>());
-        }
-        template<std::size_t S>
-        constexpr static std::uint32_t key4()
-        {
-            return static_cast<std::uint32_t>(detail::pcg32<S>());
-        }
         template<std::size_t S>
         constexpr static std::uint64_t key8()
         {
             return (static_cast<std::uint64_t>(detail::pcg32<S>()) << 32) |
-                   detail::pcg32<S + N>();
+                   detail::pcg32<S + 85>();
         }
 
-        template<std::size_t N2>
-        constexpr static JM_FORCEINLINE void _xorcpy(char* __restrict store,
-                                                     const char* __restrict str)
+        template<std::size_t N>
+        JM_FORCEINLINE constexpr void
+        _xorcpy(const detail::string_storage<T>& store)
         {
-            if constexpr (N2 * sizeof(T) / 8 > 0) {
-                constexpr auto k = key8<N2>();
-                store[7] = str[7] ^ static_cast<T>(k >> (64 - sizeof(T) * 8));
-                store[6] = str[6] ^ static_cast<T>(k >> (56 - sizeof(T) * 8));
-                store[5] = str[5] ^ static_cast<T>(k >> (48 - sizeof(T) * 8));
-                store[4] = str[4] ^ static_cast<T>(k >> (40 - sizeof(T) * 8));
-                store[3] = str[3] ^ static_cast<T>(k >> (32 - sizeof(T) * 8));
-                store[2] = str[2] ^ static_cast<T>(k >> (24 - sizeof(T) * 8));
-                store[1] = str[1] ^ static_cast<T>(k >> (16 - sizeof(T) * 8));
-                store[0] = str[0] ^ static_cast<T>(k >> (8 - sizeof(T) * 8));
-                _xorcpy<N2 - 8>(store + 8, str + 8);
-            }
-            else if constexpr (N2 / 4 > 0) {
-                constexpr auto k = key4<N2>();
-
-                store[3] = str[3] ^ static_cast<T>(k >> (32 - sizeof(T) * 8));
-                store[2] = str[2] ^ static_cast<T>(k >> (24 - sizeof(T) * 8));
-                store[1] = str[1] ^ static_cast<T>(k >> (16 - sizeof(T) * 8));
-                store[0] = str[0] ^ static_cast<T>(k >> (8 - sizeof(T) * 8));
-
-                _xorcpy<N2 - 4>(store + 4, str + 4);
-            }
-            else if constexpr (N2 / 2 > 0) {
-                constexpr auto k = key2<N2>();
-
-                store[1] = str[1] ^ static_cast<T>(k >> (16 - sizeof(T) * 8));
-                store[0] = str[0] ^ static_cast<T>(k >> (8 - sizeof(T) * 8));
-                _xorcpy<N2 - 2>(store + 2, str + 2);
-            }
-            else if constexpr (N2 > 0) {
-                store[0] = str[0] ^ key<N2>();
-                _xorcpy<N2 - 1>(store + 1, str + 1);
+            if constexpr (N != 4) {
+                constexpr auto key = key8<N>();
+                _storage[N]        = store.storage[N] ^ key;
+                _xorcpy<N + 1>(store);
             }
         }
-        JM_FORCEINLINE constexpr xorstr(const T* __restrict str) noexcept
-            : _storage{ 0 }
+        JM_FORCEINLINE constexpr xorstr() noexcept : _storage{ 0 }
         {
-            _xorcpy<N>(_storage, str);
+            constexpr detail::string_storage<T> str;
+            _xorcpy<0>(str);
         }
 
-        template<std::size_t N2>
-        JM_FORCEINLINE static void _crypt(char* __restrict str) noexcept
+        template<std::size_t N>
+        JM_FORCEINLINE void _crypt() noexcept
         {
-            if constexpr (N2 / 8 > 0) {
-                *reinterpret_cast<volatile std::uint64_t*>(str) ^= key8<N2>();
-                _crypt<N2 - 8>(str + 8);
-            }
-            else if constexpr (N2 / 4 > 0) {
-                *reinterpret_cast<volatile std::uint32_t*>(str) ^= key4<N2>();
-                _crypt<N2 - 4>(str + 4);
-            }
-            else if constexpr (N2 / 2 > 0) {
-                *reinterpret_cast<volatile std::uint16_t*>(str) ^= key2<N2>();
-                _crypt<N2 - 2>(str + 2);
-            }
-            else if constexpr (N2 > 0) {
-                *(str) ^= key<N2>();
-                _crypt<N2 - 1>(str + 1);
-            }
+            constexpr std::uint64_t keys[] = {
+                key8<0>(), key8<1>(), key8<2>(), key8<3>()
+            };
+            *reinterpret_cast<__m256i*>(&_storage) =
+                _mm256_xor_si256(*reinterpret_cast<__m256i*>(&_storage),
+                                 *reinterpret_cast<const __m256i*>(&keys));
         }
 
         constexpr std::size_t size() const noexcept { return N - 1; }
 
-        JM_FORCEINLINE void crypt() const noexcept { _crypt<N>(_storage); }
+        JM_FORCEINLINE void crypt() noexcept { _crypt<0>(); }
 
         const T* get() const noexcept { return _storage; }
 
-        JM_FORCEINLINE const T* crypt_get() const noexcept
+        JM_FORCEINLINE const char* crypt_get() noexcept
         {
             crypt();
-            return const_cast<const char*>(_storage);
+            return reinterpret_cast<const char*>(_storage);
         }
     };
 
-#define xorstr(str)                                                           \
-    []() {                                                                    \
-        using XOR_T = std::decay_t<decltype(*str)>;                           \
-        constexpr ::jm::xorstr<XOR_T, sizeof(str) / sizeof(XOR_T)> xstr(str); \
-        return xstr;                                                          \
+#define xorstr(str)                         \
+    []() {                                  \
+        using STR_T = CRBN_STR(str);        \
+        constexpr ::jm::xorstr<STR_T> xstr; \
+        return xstr;                        \
     }()
 
 } // namespace jm
