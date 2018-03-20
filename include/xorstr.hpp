@@ -141,8 +141,10 @@ namespace jm {
             XORSTR_FORCEINLINE constexpr string_storage() : storage{ 0 }
             {
                 for (std::size_t i = 0; i < T::size; ++i)
-                    storage[i / 8] |=
-                        (std::uint64_t(T::str[i]) << ((i % 8) * 8));
+                    storage[i / (8 / sizeof(typename T::value_type))] |=
+                        (std::uint64_t(T::str[i])
+                         << ((i % (8 / sizeof(typename T::value_type))) * 8 *
+                             sizeof(typename T::value_type)));
 
                 _xorcpy<0>();
             }
@@ -232,10 +234,10 @@ namespace jm {
 
         XORSTR_FORCEINLINE const T* get() const noexcept { return _storage; }
 
-        XORSTR_FORCEINLINE const char* crypt_get() noexcept
+        XORSTR_FORCEINLINE const typename T::value_type* crypt_get() noexcept
         {
             crypt();
-            return (const char*)(_storage);
+            return (const typename T::value_type*)(_storage);
         }
     };
 
