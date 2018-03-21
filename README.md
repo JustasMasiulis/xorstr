@@ -24,7 +24,8 @@ Input code
 ```cpp
 int main() {
     std::puts(xorstr("an extra long hello_world").crypt_get());
-}```
+}
+```
 Output of gcc (trunk)
 ```asm
 main:
@@ -56,4 +57,5 @@ main:
   call puts
   xor eax, eax
   leave
-  ret```
+  ret
+  ```
