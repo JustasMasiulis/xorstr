@@ -5,12 +5,10 @@
 
 #define xorstr(str) ::jm::xor_string<XORSTR_STR(str)>()
 
-#ifndef XORSTR_FORCEINLINE
 #ifdef _MSC_VER
 #define XORSTR_FORCEINLINE __forceinline
 #else
 #define XORSTR_FORCEINLINE __attribute__((always_inline))
-#endif
 #endif
 
 #if defined(__clang__)
@@ -24,6 +22,8 @@
 #define XORSTR_VOLATILE
 #endif
 
+// these compile time strings were required for an earlier version.
+// might not be necessary for current version
 #define XORSTR_STRING_EXPAND_10(n, x)                         \
     jm::detail::c_at<n##0>(x), jm::detail::c_at<n##1>(x),     \
         jm::detail::c_at<n##2>(x), jm::detail::c_at<n##3>(x), \
@@ -124,29 +124,36 @@ namespace jm {
             return x * 2 + ((T::size_in_bytes() - x * 16) % 16 != 0) * 2;
         }
 
+        // clang and gcc try really hard to place the constants in data
+        // sections. to counter that there was a need to create an intermediate
+        // constexpr string and then copy it into a non constexpr container with
+        // volatile storage so that the constants would be placed directly into
+        // code.
         template<class T>
         struct string_storage {
             std::uint64_t storage[buffer_size<T>()];
 
             template<std::size_t N = 0>
-            XORSTR_FORCEINLINE constexpr void _xorcpy()
+            XORSTR_FORCEINLINE constexpr void _xor()
             {
                 if constexpr (N != detail::buffer_size<T>()) {
                     constexpr auto key = key8<N>();
                     storage[N] ^= key;
-                    _xorcpy<N + 1>();
+                    _xor<N + 1>();
                 }
             }
 
             XORSTR_FORCEINLINE constexpr string_storage() : storage{ 0 }
             {
+                // puts the string into 64 bit integer blocks in a constexpr
+                // fashion
                 for (std::size_t i = 0; i < T::size; ++i)
                     storage[i / (8 / sizeof(typename T::value_type))] |=
                         (std::uint64_t(T::str[i])
                          << ((i % (8 / sizeof(typename T::value_type))) * 8 *
                              sizeof(typename T::value_type)));
-
-                _xorcpy<0>();
+                // applies the xor encryption
+                _xor<0>();
             }
         };
 
@@ -161,6 +168,8 @@ namespace jm {
         {
             if constexpr (detail::buffer_size<T>() > N) {
                 if constexpr ((detail::buffer_size<T>() - N) >= 4) {
+                    // assignments are separate on purpose. Do not replace with
+                    // = { ... }
                     XORSTR_CLANG_VOLATILE std::uint64_t keys[4];
                     keys[0] = detail::key8<N + 0>();
                     keys[1] = detail::key8<N + 1>();
@@ -186,53 +195,34 @@ namespace jm {
         template<std::size_t N>
         XORSTR_FORCEINLINE constexpr static std::uint64_t _at()
         {
+            // forces compile time evaluation of storage for access
             return std::integral_constant<
                 std::uint64_t,
                 detail::string_storage<T>{}.storage[N]>::value;
         }
 
-    public:
-        XORSTR_FORCEINLINE xor_string() noexcept
+        // loop generates vectorized code which places constants in data dir
+        template<std::size_t N>
+        void _copy() noexcept
         {
-            if constexpr (detail::buffer_size<T>() > 0) {
-                _storage[0] = _at<0>();
-                _storage[1] = _at<1>();
-            }
-            if constexpr (detail::buffer_size<T>() > 2) {
-                _storage[2] = _at<2>();
-                _storage[3] = _at<3>();
-            }
-            if constexpr (detail::buffer_size<T>() > 4) {
-                _storage[4] = _at<4>();
-                _storage[5] = _at<5>();
-            }
-            if constexpr (detail::buffer_size<T>() > 6) {
-                _storage[6] = _at<6>();
-                _storage[7] = _at<7>();
-            }
-            if constexpr (detail::buffer_size<T>() > 8) {
-                _storage[8] = _at<8>();
-                _storage[9] = _at<9>();
-            }
-            if constexpr (detail::buffer_size<T>() > 10) {
-                _storage[10] = _at<10>();
-                _storage[11] = _at<11>();
-            }
-            if constexpr (detail::buffer_size<T>() > 12) {
-                _storage[12] = _at<12>();
-                _storage[13] = _at<13>();
-            }
-            if constexpr (detail::buffer_size<T>() > 14) {
-                _storage[14] = _at<14>();
-                _storage[15] = _at<15>();
+            if constexpr (detail::buffer_size<T>() > N) {
+                _storage[N]     = _at<N>();
+                _storage[N + 1] = _at<N + 1>();
+                _copy<N + 2>();
             }
         }
+
+    public:
+        XORSTR_FORCEINLINE xor_string() noexcept { _copy<0>(); }
 
         constexpr std::size_t size() const noexcept { return T::size - 1; }
 
         XORSTR_FORCEINLINE void crypt() noexcept { _crypt<0>(); }
 
-        XORSTR_FORCEINLINE const T* get() const noexcept { return _storage; }
+        XORSTR_FORCEINLINE const typename T::value_type* get() const noexcept
+        {
+            return _storage;
+        }
 
         XORSTR_FORCEINLINE const typename T::value_type* crypt_get() noexcept
         {
