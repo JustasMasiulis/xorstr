@@ -1,7 +1,9 @@
-#pragma once
+#ifndef JM_XORSTR_HPP
+#define JM_XORSTR_HPP
+
 #include <immintrin.h>
-#include <cstdint>
 #include <type_traits>
+#include <cstdint>
 
 #define xorstr(str) ::jm::xor_string<XORSTR_STR(str)>()
 
@@ -11,6 +13,9 @@
 #define XORSTR_FORCEINLINE __attribute__((always_inline))
 #endif
 
+// MSVC - no volatile
+// GCC - volatile almost everywhere
+// clang - volatile everywhere
 #if defined(__clang__)
 #define XORSTR_CLANG_VOLATILE volatile
 #define XORSTR_VOLATILE volatile
@@ -213,21 +218,27 @@ namespace jm {
         }
 
     public:
+        using value_type    = typename T::value_type;
+        using size_type     = std::size_t;
+        using pointer       = value_type*;
+        using const_pointer = const pointer;
+
         XORSTR_FORCEINLINE xor_string() noexcept { _copy<0>(); }
 
-        constexpr std::size_t size() const noexcept { return T::size - 1; }
+        constexpr size_type size() const noexcept { return T::size - 1; }
 
         XORSTR_FORCEINLINE void crypt() noexcept { _crypt<0>(); }
 
-        XORSTR_FORCEINLINE const typename T::value_type* get() const noexcept
+        XORSTR_FORCEINLINE const_pointer get() const noexcept
         {
             return _storage;
         }
 
-        XORSTR_FORCEINLINE const typename T::value_type* crypt_get() noexcept
+        XORSTR_FORCEINLINE const_pointer crypt_get() noexcept
         {
             crypt();
-            return (const typename T::value_type*)(_storage);
+            // C casts are used because buffer may or may not be volatile
+            return (const_pointer)(_storage);
         }
     };
 
@@ -236,3 +247,5 @@ namespace jm {
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
+
+#endif // include guard
