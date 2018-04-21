@@ -188,6 +188,7 @@ namespace jm {
         XORSTR_FORCEINLINE void _crypt() noexcept
         {
             if constexpr (detail::buffer_size<T>() > N) {
+#ifndef JM_XORSTR_DISABLE_AVX_INTRINSICS
                 if constexpr ((detail::buffer_size<T>() - N) >= 4) {
                     // assignments are separate on purpose. Do not replace with
                     // = { ... }
@@ -201,7 +202,9 @@ namespace jm {
                         *(__m256i*)(&_storage[N]), *(const __m256i*)(&keys));
                     _crypt<N + 4>();
                 }
-                else {
+                else 
+#endif
+                {
                     XORSTR_VOLATILE std::uint64_t keys[2];
                     keys[0] = detail::key8<N + 0>();
                     keys[1] = detail::key8<N + 1>();
