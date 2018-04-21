@@ -16,8 +16,9 @@ xs.size(); // returns string size
 * The code has been crafter so that all the data would be embedded directly into code and not stored on .rdata and such.
 * The entirety of string encryption and decryption will be inlined.
 
-# supported compilers
+# supported compilers and platforms
 Tested to be working on clang 5.0+, gcc 7.1+ and MSVC v141.
+If your CPU does not support AVX define JM_XORSTR_DISABLE_AVX_INTRINSICS to only use SSE.
 
 # example assembly output
 Input code
