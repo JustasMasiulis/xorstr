@@ -144,6 +144,16 @@ namespace jm {
             constexpr auto x = T::size_in_bytes() / 16;
             return x * 2 + ((T::size_in_bytes() - x * 16) % 16 != 0) * 2;
         }
+        
+        template<class T>
+        constexpr std::size_t buffer_align()
+        {
+#ifndef JM_XORSTR_DISABLE_AVX_INTRINSICS
+            return ((T::size_in_bytes() > 16) ? 32 : 16);
+#else
+            return 16;
+#endif
+        }
 
         // clang and gcc try really hard to place the constants in data
         // sections. to counter that there was a need to create an intermediate
@@ -182,7 +192,7 @@ namespace jm {
 
     template<class T>
     struct xor_string {
-        XORSTR_VOLATILE std::uint64_t _storage[detail::buffer_size<T>()];
+        XORSTR_VOLATILE alignas(detail::buffer_align<T>()) std::uint64_t _storage[detail::buffer_size<T>()];
 
         template<std::size_t N>
         XORSTR_FORCEINLINE void _crypt() noexcept
@@ -192,7 +202,7 @@ namespace jm {
                 if constexpr ((detail::buffer_size<T>() - N) >= 4) {
                     // assignments are separate on purpose. Do not replace with
                     // = { ... }
-                    XORSTR_CLANG_VOLATILE std::uint64_t keys[4];
+                    XORSTR_CLANG_VOLATILE alignas(32) std::uint64_t keys[4];
                     keys[0] = detail::key8<N + 0>();
                     keys[1] = detail::key8<N + 1>();
                     keys[2] = detail::key8<N + 2>();
@@ -205,7 +215,7 @@ namespace jm {
                 else 
 #endif
                 {
-                    XORSTR_VOLATILE std::uint64_t keys[2];
+                    XORSTR_VOLATILE alignas(16) std::uint64_t keys[2];
                     keys[0] = detail::key8<N + 0>();
                     keys[1] = detail::key8<N + 1>();
 
