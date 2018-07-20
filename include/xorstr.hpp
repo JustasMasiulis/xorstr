@@ -22,6 +22,8 @@
 #include <cstdint>
 
 #define xorstr(str) ::jm::xor_string<XORSTR_STR(str)>()
+#define _a(str) xorstr(str).crypt_get()
+#define _w(str) xorstr(L##str).crypt_get()
 
 #ifdef _MSC_VER
 #define XORSTR_FORCEINLINE __forceinline
@@ -144,7 +146,7 @@ namespace jm {
             constexpr auto x = T::size_in_bytes() / 16;
             return x * 2 + ((T::size_in_bytes() - x * 16) % 16 != 0) * 2;
         }
-        
+
         template<class T>
         constexpr std::size_t buffer_align()
         {
@@ -212,7 +214,7 @@ namespace jm {
                         *(__m256i*)(&_storage[N]), *(const __m256i*)(&keys));
                     _crypt<N + 4>();
                 }
-                else 
+                else
 #endif
                 {
                     XORSTR_VOLATILE alignas(16) std::uint64_t keys[2];
