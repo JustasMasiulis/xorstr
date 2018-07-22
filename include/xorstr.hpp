@@ -144,7 +144,7 @@ namespace jm {
             constexpr auto x = T::size_in_bytes() / 16;
             return x * 2 + ((T::size_in_bytes() - x * 16) % 16 != 0) * 2;
         }
-        
+
         template<class T>
         constexpr std::size_t buffer_align()
         {
@@ -192,7 +192,7 @@ namespace jm {
 
     template<class T>
     struct xor_string {
-        XORSTR_VOLATILE alignas(detail::buffer_align<T>()) std::uint64_t _storage[detail::buffer_size<T>()];
+        alignas(detail::buffer_align<T>()) XORSTR_VOLATILE std::uint64_t _storage[detail::buffer_size<T>()];
 
         template<std::size_t N>
         XORSTR_FORCEINLINE void _crypt() noexcept
@@ -202,7 +202,7 @@ namespace jm {
                 if constexpr ((detail::buffer_size<T>() - N) >= 4) {
                     // assignments are separate on purpose. Do not replace with
                     // = { ... }
-                    XORSTR_CLANG_VOLATILE alignas(32) std::uint64_t keys[4];
+                    alignas(32) XORSTR_CLANG_VOLATILE std::uint64_t keys[4];
                     keys[0] = detail::key8<N + 0>();
                     keys[1] = detail::key8<N + 1>();
                     keys[2] = detail::key8<N + 2>();
@@ -212,10 +212,10 @@ namespace jm {
                         *(__m256i*)(&_storage[N]), *(const __m256i*)(&keys));
                     _crypt<N + 4>();
                 }
-                else 
+                else
 #endif
                 {
-                    XORSTR_VOLATILE alignas(16) std::uint64_t keys[2];
+                    alignas(16) XORSTR_VOLATILE std::uint64_t keys[2];
                     keys[0] = detail::key8<N + 0>();
                     keys[1] = detail::key8<N + 1>();
 
