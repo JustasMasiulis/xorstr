@@ -24,6 +24,7 @@ If your CPU does not support AVX define JM_XORSTR_DISABLE_AVX_INTRINSICS to only
 Input code
 ```cpp
 int main() {
+    // or alternatively xorstr_(...) which includes crypt_get call
     std::puts(xorstr("an extra long hello_world").crypt_get());
 }
 ```
