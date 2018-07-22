@@ -22,8 +22,7 @@
 #include <cstdint>
 
 #define xorstr(str) ::jm::xor_string<XORSTR_STR(str)>()
-#define _a(str) xorstr(str).crypt_get()
-#define _w(str) xorstr(L##str).crypt_get()
+#define xorstr_(str) xorstr(str).crypt_get()
 
 #ifdef _MSC_VER
 #define XORSTR_FORCEINLINE __forceinline
