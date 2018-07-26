@@ -18,8 +18,8 @@
 #define JM_XORSTR_HPP
 
 #include <immintrin.h>
-#include <type_traits>
 #include <cstdint>
+#include <cstddef>
 
 #define xorstr(str) ::jm::xor_string<XORSTR_STR(str)>()
 #define xorstr_(str) xorstr(str).crypt_get()
@@ -46,12 +46,11 @@
 
 // these compile time strings were required for an earlier version.
 // might not be necessary for current version
-#define XORSTR_STRING_EXPAND_10(n, x)                         \
-    jm::detail::c_at<n##0>(x), jm::detail::c_at<n##1>(x),     \
-        jm::detail::c_at<n##2>(x), jm::detail::c_at<n##3>(x), \
-        jm::detail::c_at<n##4>(x), jm::detail::c_at<n##5>(x), \
-        jm::detail::c_at<n##6>(x), jm::detail::c_at<n##7>(x), \
-        jm::detail::c_at<n##8>(x), jm::detail::c_at<n##9>(x)
+#define XORSTR_STRING_EXPAND_10(n, x)                                                    \
+    jm::detail::c_at<n##0>(x), jm::detail::c_at<n##1>(x), jm::detail::c_at<n##2>(x),     \
+        jm::detail::c_at<n##3>(x), jm::detail::c_at<n##4>(x), jm::detail::c_at<n##5>(x), \
+        jm::detail::c_at<n##6>(x), jm::detail::c_at<n##7>(x), jm::detail::c_at<n##8>(x), \
+        jm::detail::c_at<n##9>(x)
 
 #define XORSTR_STRING_EXPAND_100(x)                                   \
     XORSTR_STRING_EXPAND_10(, x), XORSTR_STRING_EXPAND_10(1, x),      \
@@ -60,22 +59,30 @@
         XORSTR_STRING_EXPAND_10(6, x), XORSTR_STRING_EXPAND_10(7, x), \
         XORSTR_STRING_EXPAND_10(8, x), XORSTR_STRING_EXPAND_10(9, x)
 
-#define XORSTR_STR(s)                                     \
-    ::jm::detail::string_builder<                         \
-        std::decay_t<decltype(*s)>,                       \
-        jm::detail::tstring_<std::decay_t<decltype(*s)>>, \
+#define XORSTR_STR(s)                                                      \
+    ::jm::detail::string_builder<                                          \
+        typename ::jm::detail::decay_array_deref<decltype(*s)>::type,      \
+        jm::detail::tstring_<                                              \
+            typename ::jm::detail::decay_array_deref<decltype(*s)>::type>, \
         XORSTR_STRING_EXPAND_100(s)>::type
-
-// disable constant overflow warnings
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4309)
-#pragma warning(disable : 4307)
-#endif
 
 namespace jm {
 
     namespace detail {
+
+        template<class T>
+        struct decay_array_deref;
+
+        template<class T>
+        struct decay_array_deref<T&> {
+            using type = T;
+        };
+
+        template<class T>
+        struct decay_array_deref<const T&> {
+            using type = T;
+        };
+
 
         template<std::size_t I, std::size_t M, class T>
         constexpr T c_at(const T (&str)[M]) noexcept
@@ -92,11 +99,23 @@ namespace jm {
             using type = B;
         };
 
+        template<bool Cond>
+        struct conditional {
+            template<class, class False>
+            using type = False;
+        };
+
+        template<>
+        struct conditional<true> {
+            template<class True, class>
+            using type = True;
+        };
+
         template<class T, template<class, T...> class S, T... Hs, T C, T... Cs>
         struct string_builder<T, S<T, Hs...>, C, Cs...>
-            : std::conditional<C == T(0),
-                               string_builder<T, S<T, Hs...>>,
-                               string_builder<T, S<T, Hs..., C>, Cs...>>::type {
+            : conditional<C ==
+                          T(0)>::template type<string_builder<T, S<T, Hs...>>,
+                                               string_builder<T, S<T, Hs..., C>, Cs...>> {
         };
 
         template<class T, T... Cs>
@@ -111,32 +130,26 @@ namespace jm {
             }
         };
 
-        constexpr std::uint64_t rng_seed() noexcept
+        constexpr static void hash_single(std::uint32_t& value, char c) noexcept
         {
-            std::uint64_t shifted = 0ull;
-            for (int i = 0; i < 8; ++i) {
-                shifted <<= 8;
-                shifted |= __TIME__[i];
-            }
-            return shifted;
+            value = static_cast<std::uint32_t>((value ^ c) * 16777619ull);
         }
 
-        template<std::uint64_t S>
-        constexpr std::uint32_t pcg32() noexcept
+        template<std::uint32_t Seed>
+        constexpr std::uint32_t key4() noexcept
         {
-            constexpr auto seed       = rng_seed();
-            constexpr auto oldstate   = S * 6364136223846793005ull + (seed | 1);
-            std::uint32_t  xorshifted = static_cast<std::uint32_t>(
-                ((oldstate >> 18u) ^ oldstate) >> 27u);
-            std::uint32_t rot = oldstate >> 59u;
-            return (xorshifted >> rot) | (xorshifted << ((1u + ~rot) & 31));
+            std::uint32_t value = Seed;
+            for(auto str = __TIME__; *str; ++str)
+                hash_single(value, *str);
+            return value;
         }
 
         template<std::size_t S>
         constexpr std::uint64_t key8()
         {
-            return (static_cast<std::uint64_t>(detail::pcg32<S>()) << 32) |
-                   detail::pcg32<S + 85>();
+            constexpr auto first_part = key4<2166136261 + S>();
+            return (static_cast<std::uint64_t>(first_part) << 32) |
+                   detail::key4<first_part>();
         }
 
         template<class T>
@@ -168,7 +181,7 @@ namespace jm {
             template<std::size_t N = 0>
             XORSTR_FORCEINLINE constexpr void _xor()
             {
-                if constexpr (N != detail::buffer_size<T>()) {
+                if constexpr(N != detail::buffer_size<T>()) {
                     constexpr auto key = key8<N>();
                     storage[N] ^= key;
                     _xor<N + 1>();
@@ -179,7 +192,7 @@ namespace jm {
             {
                 // puts the string into 64 bit integer blocks in a constexpr
                 // fashion
-                for (std::size_t i = 0; i < T::size; ++i)
+                for(std::size_t i = 0; i < T::size; ++i)
                     storage[i / (8 / sizeof(typename T::value_type))] |=
                         (std::uint64_t(T::str[i])
                          << ((i % (8 / sizeof(typename T::value_type))) * 8 *
@@ -193,14 +206,15 @@ namespace jm {
 
     template<class T>
     struct xor_string {
-        alignas(detail::buffer_align<T>()) XORSTR_VOLATILE std::uint64_t _storage[detail::buffer_size<T>()];
+        alignas(detail::buffer_align<T>())
+            XORSTR_VOLATILE std::uint64_t _storage[detail::buffer_size<T>()];
 
         template<std::size_t N>
         XORSTR_FORCEINLINE void _crypt() noexcept
         {
-            if constexpr (detail::buffer_size<T>() > N) {
+            if constexpr(detail::buffer_size<T>() > N) {
 #ifndef JM_XORSTR_DISABLE_AVX_INTRINSICS
-                if constexpr ((detail::buffer_size<T>() - N) >= 4) {
+                if constexpr((detail::buffer_size<T>() - N) >= 4) {
                     // assignments are separate on purpose. Do not replace with
                     // = { ... }
                     alignas(32) XORSTR_CLANG_VOLATILE std::uint64_t keys[4];
@@ -220,8 +234,8 @@ namespace jm {
                     keys[0] = detail::key8<N + 0>();
                     keys[1] = detail::key8<N + 1>();
 
-                    *(__m128i*)(&_storage[N]) = _mm_xor_si128(
-                        *(__m128i*)(&_storage[N]), *(const __m128i*)(&keys));
+                    *(__m128i*)(&_storage[N]) = _mm_xor_si128(*(__m128i*)(&_storage[N]),
+                                                              *(const __m128i*)(&keys));
                     _crypt<N + 2>();
                 }
             }
@@ -231,16 +245,15 @@ namespace jm {
         XORSTR_FORCEINLINE constexpr static std::uint64_t _at()
         {
             // forces compile time evaluation of storage for access
-            return std::integral_constant<
-                std::uint64_t,
-                detail::string_storage<T>{}.storage[N]>::value;
+            constexpr std::uint64_t val = detail::string_storage<T>{}.storage[N];
+            return val;
         }
 
         // loop generates vectorized code which places constants in data dir
         template<std::size_t N>
         void _copy() noexcept
         {
-            if constexpr (detail::buffer_size<T>() > N) {
+            if constexpr(detail::buffer_size<T>() > N) {
                 _storage[N]     = _at<N>();
                 _storage[N + 1] = _at<N + 1>();
                 _copy<N + 2>();
@@ -259,10 +272,7 @@ namespace jm {
 
         XORSTR_FORCEINLINE void crypt() noexcept { _crypt<0>(); }
 
-        XORSTR_FORCEINLINE const_pointer get() const noexcept
-        {
-            return _storage;
-        }
+        XORSTR_FORCEINLINE const_pointer get() const noexcept { return _storage; }
 
         XORSTR_FORCEINLINE const_pointer crypt_get() noexcept
         {
@@ -273,9 +283,5 @@ namespace jm {
     };
 
 } // namespace jm
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
 #endif // include guard
