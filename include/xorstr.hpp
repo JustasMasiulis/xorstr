@@ -147,9 +147,9 @@ namespace jm {
         template<std::size_t S>
         constexpr std::uint64_t key8()
         {
-            constexpr auto first_part = key4<2166136261 + S>();
-            return (static_cast<std::uint64_t>(first_part) << 32) |
-                   detail::key4<first_part>();
+            constexpr auto first_part  = key4<2166136261 + S>();
+            constexpr auto second_part = key4<first_part>();
+            return (static_cast<std::uint64_t>(first_part) << 32) | second_part;
         }
 
         template<class T>
