@@ -82,7 +82,26 @@ namespace jm {
         struct decay_array_deref<const T&> {
             using type = T;
         };
+        
+        template<bool Cond>
+        struct conditional {
+            template<class, class False>
+            using type = False;
+        };
 
+        template<>
+        struct conditional<true> {
+            template<class True, class>
+            using type = True;
+        };
+        
+        template<class T>
+        struct as_unsigned {
+            using type = typename conditional<sizeof(T) == 1>::template type<
+                std::uint8_t,
+                typename conditional<sizeof(T) == 2>::template type<unsigned short,
+                                                                    unsigned int>>;
+        };
 
         template<std::size_t I, std::size_t M, class T>
         constexpr T c_at(const T (&str)[M]) noexcept
@@ -97,18 +116,6 @@ namespace jm {
         template<class T, class B>
         struct string_builder<T, B> {
             using type = B;
-        };
-
-        template<bool Cond>
-        struct conditional {
-            template<class, class False>
-            using type = False;
-        };
-
-        template<>
-        struct conditional<true> {
-            template<class True, class>
-            using type = True;
         };
 
         template<class T, template<class, T...> class S, T... Hs, T C, T... Cs>
@@ -190,11 +197,13 @@ namespace jm {
 
             XORSTR_FORCEINLINE constexpr string_storage() : storage{ 0 }
             {
+                using cast_type = typename as_unsigned<typename T::value_type>::type;
+
                 // puts the string into 64 bit integer blocks in a constexpr
                 // fashion
                 for(std::size_t i = 0; i < T::size; ++i)
                     storage[i / (8 / sizeof(typename T::value_type))] |=
-                        (std::uint64_t(T::str[i])
+                        (std::uint64_t{ static_cast<cast_type>(T::str[i]) }
                          << ((i % (8 / sizeof(typename T::value_type))) * 8 *
                              sizeof(typename T::value_type)));
                 // applies the xor encryption
