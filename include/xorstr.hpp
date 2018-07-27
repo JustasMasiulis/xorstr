@@ -146,7 +146,7 @@ namespace jm {
         constexpr std::uint32_t key4() noexcept
         {
             std::uint32_t value = Seed;
-            for(auto str = __TIME__; *str; ++str)
+            for(auto str = __FILE__; *str; ++str)
                 hash_single(value, *str);
             return value;
         }
