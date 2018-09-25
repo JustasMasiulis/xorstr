@@ -281,7 +281,11 @@ namespace jm {
 
         XORSTR_FORCEINLINE void crypt() noexcept { _crypt<0>(); }
 
-        XORSTR_FORCEINLINE const_pointer get() const noexcept { return _storage; }
+        XORSTR_FORCEINLINE const_pointer get() const noexcept
+        {
+            // C casts are used because buffer may or may not be volatile
+            return (const_pointer)(_storage);
+        }
 
         XORSTR_FORCEINLINE const_pointer crypt_get() noexcept
         {
