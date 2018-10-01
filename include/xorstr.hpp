@@ -31,16 +31,10 @@
 #endif
 
 // MSVC - no volatile
-// GCC - volatile almost everywhere
-// clang - volatile everywhere
-#if defined(__clang__)
-#define XORSTR_CLANG_VOLATILE volatile
-#define XORSTR_VOLATILE volatile
-#elif defined(__GNUC__)
-#define XORSTR_CLANG_VOLATILE
+// GCC and clang - volatile everywhere
+#if defined(__clang__) || defined(__GNUC__)
 #define XORSTR_VOLATILE volatile
 #else
-#define XORSTR_CLANG_VOLATILE
 #define XORSTR_VOLATILE
 #endif
 
@@ -224,7 +218,7 @@ namespace jm {
                 if constexpr((detail::buffer_size<T>() - N) >= 4) {
                     // assignments are separate on purpose. Do not replace with
                     // = { ... }
-                    alignas(32) XORSTR_CLANG_VOLATILE std::uint64_t keys[4];
+                    alignas(32) XORSTR_VOLATILE std::uint64_t keys[4];
                     keys[0] = detail::key8<N + 0>();
                     keys[1] = detail::key8<N + 1>();
                     keys[2] = detail::key8<N + 2>();
