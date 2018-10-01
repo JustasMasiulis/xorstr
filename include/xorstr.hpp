@@ -279,7 +279,7 @@ namespace jm {
 
         XORSTR_FORCEINLINE xor_string() noexcept { _copy<0>(); }
 
-        constexpr size_type size() const noexcept { return T::size - 1; }
+        XORSTR_FORCEINLINE constexpr size_type size() const noexcept { return T::size - 1; }
 
         XORSTR_FORCEINLINE void crypt() noexcept { _crypt<0>(); }
 
