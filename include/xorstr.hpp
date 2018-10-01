@@ -30,11 +30,17 @@
 #define XORSTR_FORCEINLINE __attribute__((always_inline))
 #endif
 
+// you can define this macro to get possibly faster code on gcc/clang
+// at the expense of constants being put into data section.
+#if !defined(XORSTR_ALLOW_DATA)
 // MSVC - no volatile
 // GCC and clang - volatile everywhere
 #if defined(__clang__) || defined(__GNUC__)
 #define XORSTR_VOLATILE volatile
-#else
+#endif
+
+#endif
+#ifndef XORSTR_VOLATILE
 #define XORSTR_VOLATILE
 #endif
 
