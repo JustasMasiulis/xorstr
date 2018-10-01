@@ -30,17 +30,17 @@
 #define XORSTR_FORCEINLINE __attribute__((always_inline))
 #endif
 
+// you can define this macro to get possibly faster code on gcc/clang
+// at the expense of constants being put into data section.
+#if !defined(XORSTR_ALLOW_DATA)
 // MSVC - no volatile
-// GCC - volatile almost everywhere
-// clang - volatile everywhere
-#if defined(__clang__)
-#define XORSTR_CLANG_VOLATILE volatile
+// GCC and clang - volatile everywhere
+#if defined(__clang__) || defined(__GNUC__)
 #define XORSTR_VOLATILE volatile
-#elif defined(__GNUC__)
-#define XORSTR_CLANG_VOLATILE
-#define XORSTR_VOLATILE volatile
-#else
-#define XORSTR_CLANG_VOLATILE
+#endif
+
+#endif
+#ifndef XORSTR_VOLATILE
 #define XORSTR_VOLATILE
 #endif
 
@@ -59,11 +59,10 @@
         XORSTR_STRING_EXPAND_10(6, x), XORSTR_STRING_EXPAND_10(7, x), \
         XORSTR_STRING_EXPAND_10(8, x), XORSTR_STRING_EXPAND_10(9, x)
 
-#define XORSTR_STR(s)                                                      \
-    ::jm::detail::string_builder<                                          \
-        typename ::jm::detail::decay_array_deref<decltype(*s)>::type,      \
-        jm::detail::tstring_<                                              \
-            typename ::jm::detail::decay_array_deref<decltype(*s)>::type>, \
+#define XORSTR_STR(s)                                                                       \
+    ::jm::detail::string_builder<                                                           \
+        typename ::jm::detail::decay_array_deref<decltype(*s)>::type,                       \
+        jm::detail::tstring_<typename ::jm::detail::decay_array_deref<decltype(*s)>::type>, \
         XORSTR_STRING_EXPAND_100(s)>::type
 
 namespace jm {
@@ -82,7 +81,7 @@ namespace jm {
         struct decay_array_deref<const T&> {
             using type = T;
         };
-        
+
         template<bool Cond>
         struct conditional {
             template<class, class False>
@@ -94,7 +93,7 @@ namespace jm {
             template<class True, class>
             using type = True;
         };
-        
+
         template<class T>
         struct as_unsigned {
             using type = typename conditional<sizeof(T) == 1>::template type<
@@ -120,9 +119,8 @@ namespace jm {
 
         template<class T, template<class, T...> class S, T... Hs, T C, T... Cs>
         struct string_builder<T, S<T, Hs...>, C, Cs...>
-            : conditional<C ==
-                          T(0)>::template type<string_builder<T, S<T, Hs...>>,
-                                               string_builder<T, S<T, Hs..., C>, Cs...>> {
+            : conditional<C == T(0)>::template type<string_builder<T, S<T, Hs...>>,
+                                                    string_builder<T, S<T, Hs..., C>, Cs...>> {
         };
 
         template<class T, T... Cs>
@@ -226,14 +224,16 @@ namespace jm {
                 if constexpr((detail::buffer_size<T>() - N) >= 4) {
                     // assignments are separate on purpose. Do not replace with
                     // = { ... }
-                    alignas(32) XORSTR_CLANG_VOLATILE std::uint64_t keys[4];
+                    alignas(32) XORSTR_VOLATILE std::uint64_t keys[4];
                     keys[0] = detail::key8<N + 0>();
                     keys[1] = detail::key8<N + 1>();
                     keys[2] = detail::key8<N + 2>();
                     keys[3] = detail::key8<N + 3>();
 
-                    *(__m256i*)(&_storage[N]) = _mm256_xor_si256(
-                        *(__m256i*)(&_storage[N]), *(const __m256i*)(&keys));
+                    _mm256_store_si256(
+                        (__m256i*)(&_storage[N]),
+                        _mm256_xor_si256(_mm256_load_si256((const __m256i*)(&_storage[N])),
+                                         _mm256_load_si256((const __m256i*)(&keys))));
                     _crypt<N + 4>();
                 }
                 else
@@ -243,8 +243,10 @@ namespace jm {
                     keys[0] = detail::key8<N + 0>();
                     keys[1] = detail::key8<N + 1>();
 
-                    *(__m128i*)(&_storage[N]) = _mm_xor_si128(*(__m128i*)(&_storage[N]),
-                                                              *(const __m128i*)(&keys));
+                    _mm_store_si128(
+                        (__m128i*)(&_storage[N]),
+                        _mm_xor_si128(_mm_load_si128((const __m128i*)(&_storage[N])),
+                                      _mm_load_si128((const __m128i*)(&keys))));
                     _crypt<N + 2>();
                 }
             }
@@ -277,7 +279,7 @@ namespace jm {
 
         XORSTR_FORCEINLINE xor_string() noexcept { _copy<0>(); }
 
-        constexpr size_type size() const noexcept { return T::size - 1; }
+        XORSTR_FORCEINLINE constexpr size_type size() const noexcept { return T::size - 1; }
 
         XORSTR_FORCEINLINE void crypt() noexcept { _crypt<0>(); }
 
