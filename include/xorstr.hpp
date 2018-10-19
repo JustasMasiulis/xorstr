@@ -178,7 +178,7 @@ namespace jm {
         template<class T>
         constexpr std::size_t buffer_align()
         {
-            return _buffer_align<sizeof(T)>();
+            return _buffer_align<T::size_in_bytes()>();
         }
 
         // clang and gcc try really hard to place the constants in data
