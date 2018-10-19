@@ -20,6 +20,7 @@
 #include <immintrin.h>
 #include <cstdint>
 #include <cstddef>
+#include <utility>
 
 #define xorstr(str) ::jm::xor_string<XORSTR_STR(str)>()
 #define xorstr_(str) xorstr(str).crypt_get()
@@ -164,14 +165,20 @@ namespace jm {
             return x * 2 + ((T::size_in_bytes() - x * 16) % 16 != 0) * 2;
         }
 
-        template<class T>
-        constexpr std::size_t buffer_align()
+        template<std::size_t Size>
+        constexpr std::size_t _buffer_align()
         {
 #ifndef JM_XORSTR_DISABLE_AVX_INTRINSICS
-            return ((T::size_in_bytes() > 16) ? 32 : 16);
+            return ((Size > 16) ? 32 : 16);
 #else
             return 16;
 #endif
+        }
+
+        template<class T>
+        constexpr std::size_t buffer_align()
+        {
+            return _buffer_align<sizeof(T)>();
         }
 
         // clang and gcc try really hard to place the constants in data
@@ -209,6 +216,23 @@ namespace jm {
             }
         };
 
+        template<class>
+        struct key_storage {};
+
+        template<std::size_t... Indices>
+        struct key_storage<std::index_sequence<Indices...>> {
+            constexpr static std::size_t size = sizeof... (Indices);
+            alignas(_buffer_align<size>()) XORSTR_VOLATILE std::uint64_t values[size];
+
+            template<class... Args>
+            XORSTR_FORCEINLINE static constexpr void _dummy(Args...) noexcept {}
+
+            template<std::size_t I>
+            XORSTR_FORCEINLINE char _assign() noexcept { values[I] = key8<I>(); return 0; }
+
+            XORSTR_FORCEINLINE key_storage() noexcept { _dummy(_assign<Indices>()...); }
+        };
+
     } // namespace detail
 
     template<class T>
@@ -216,38 +240,26 @@ namespace jm {
         alignas(detail::buffer_align<T>())
             XORSTR_VOLATILE std::uint64_t _storage[detail::buffer_size<T>()];
 
-        template<std::size_t N>
-        XORSTR_FORCEINLINE void _crypt() noexcept
+        template<std::size_t N, class Keys>
+        XORSTR_FORCEINLINE void _crypt(Keys& keys) noexcept
         {
             if constexpr(detail::buffer_size<T>() > N) {
 #ifndef JM_XORSTR_DISABLE_AVX_INTRINSICS
                 if constexpr((detail::buffer_size<T>() - N) >= 4) {
-                    // assignments are separate on purpose. Do not replace with
-                    // = { ... }
-                    alignas(32) XORSTR_VOLATILE std::uint64_t keys[4];
-                    keys[0] = detail::key8<N + 0>();
-                    keys[1] = detail::key8<N + 1>();
-                    keys[2] = detail::key8<N + 2>();
-                    keys[3] = detail::key8<N + 3>();
-
                     _mm256_store_si256(
                         (__m256i*)(&_storage[N]),
                         _mm256_xor_si256(_mm256_load_si256((const __m256i*)(&_storage[N])),
-                                         _mm256_load_si256((const __m256i*)(&keys))));
-                    _crypt<N + 4>();
+                                         _mm256_load_si256((const __m256i*)(keys.values + N))));
+                    _crypt<N + 4>(keys);
                 }
                 else
 #endif
                 {
-                    alignas(16) XORSTR_VOLATILE std::uint64_t keys[2];
-                    keys[0] = detail::key8<N + 0>();
-                    keys[1] = detail::key8<N + 1>();
-
                     _mm_store_si128(
                         (__m128i*)(&_storage[N]),
                         _mm_xor_si128(_mm_load_si128((const __m128i*)(&_storage[N])),
-                                      _mm_load_si128((const __m128i*)(&keys))));
-                    _crypt<N + 2>();
+                                      _mm_load_si128((const __m128i*)(keys.values + N))));
+                    _crypt<N + 2>(keys);
                 }
             }
         }
@@ -281,7 +293,11 @@ namespace jm {
 
         XORSTR_FORCEINLINE constexpr size_type size() const noexcept { return T::size - 1; }
 
-        XORSTR_FORCEINLINE void crypt() noexcept { _crypt<0>(); }
+        XORSTR_FORCEINLINE void crypt() noexcept
+        {
+            detail::key_storage<std::make_index_sequence<detail::buffer_size<T>()>> keys;
+            _crypt<0>(keys);
+        }
 
         XORSTR_FORCEINLINE const_pointer get() const noexcept
         {
