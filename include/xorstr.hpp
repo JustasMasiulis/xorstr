@@ -222,7 +222,7 @@ namespace jm {
         template<std::size_t... Indices>
         struct key_storage<std::index_sequence<Indices...>> {
             constexpr static std::size_t size = sizeof... (Indices);
-            alignas(_buffer_align<size>()) XORSTR_VOLATILE std::uint64_t values[size];
+            alignas(_buffer_align<size * 8>()) XORSTR_VOLATILE std::uint64_t values[size];
 
             template<class... Args>
             XORSTR_FORCEINLINE static constexpr void _dummy(Args...) noexcept {}
