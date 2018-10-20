@@ -22,7 +22,10 @@
 #include <cstddef>
 #include <utility>
 
-#define xorstr(str) ::jm::xor_string<XORSTR_STR(str)>()
+#define xorstr(str)                                                                    \
+    ::jm::xor_string<XORSTR_STR(str),                                                  \
+                     typename ::jm::detail::key_list_builder<std::make_index_sequence< \
+                         ::jm::detail::_buffer_size<sizeof(str)>()>>::type>()
 #define xorstr_(str) xorstr(str).crypt_get()
 
 #ifdef _MSC_VER
@@ -60,10 +63,11 @@
         XORSTR_STRING_EXPAND_10(6, x), XORSTR_STRING_EXPAND_10(7, x), \
         XORSTR_STRING_EXPAND_10(8, x), XORSTR_STRING_EXPAND_10(9, x)
 
-#define XORSTR_STR(s)                                                                       \
-    ::jm::detail::string_builder<                                                           \
-        typename ::jm::detail::decay_array_deref<decltype(*s)>::type,                       \
-        jm::detail::tstring_<typename ::jm::detail::decay_array_deref<decltype(*s)>::type>, \
+#define XORSTR_STR(s)                                                      \
+    ::jm::detail::string_builder<                                          \
+        typename ::jm::detail::decay_array_deref<decltype(*s)>::type,      \
+        jm::detail::tstring_<                                              \
+            typename ::jm::detail::decay_array_deref<decltype(*s)>::type>, \
         XORSTR_STRING_EXPAND_100(s)>::type
 
 namespace jm {
@@ -120,8 +124,9 @@ namespace jm {
 
         template<class T, template<class, T...> class S, T... Hs, T C, T... Cs>
         struct string_builder<T, S<T, Hs...>, C, Cs...>
-            : conditional<C == T(0)>::template type<string_builder<T, S<T, Hs...>>,
-                                                    string_builder<T, S<T, Hs..., C>, Cs...>> {
+            : conditional<C ==
+                          T(0)>::template type<string_builder<T, S<T, Hs...>>,
+                                               string_builder<T, S<T, Hs..., C>, Cs...>> {
         };
 
         template<class T, T... Cs>
@@ -145,7 +150,7 @@ namespace jm {
         constexpr std::uint32_t key4() noexcept
         {
             std::uint32_t value = Seed;
-            for(auto str = __FILE__; *str; ++str)
+            for(auto str = __TIME__; *str; ++str)
                 hash_single(value, *str);
             return value;
         }
@@ -158,11 +163,16 @@ namespace jm {
             return (static_cast<std::uint64_t>(first_part) << 32) | second_part;
         }
 
+        template<std::size_t Size>
+        constexpr std::size_t _buffer_size()
+        {
+            return ((Size / 16) + (Size % 16 != 0)) * 2;
+        }
+
         template<class T>
         constexpr std::size_t buffer_size()
         {
-            constexpr auto x = T::size_in_bytes() / 16;
-            return x * 2 + ((T::size_in_bytes() - x * 16) % 16 != 0) * 2;
+            return _buffer_size<T::size_in_bytes()>();
         }
 
         template<std::size_t Size>
@@ -178,7 +188,7 @@ namespace jm {
         template<class T>
         constexpr std::size_t buffer_align()
         {
-            return _buffer_align<T::size_in_bytes()>();
+            return _buffer_align<sizeof(T)>();
         }
 
         // clang and gcc try really hard to place the constants in data
@@ -216,40 +226,49 @@ namespace jm {
             }
         };
 
+        template<std::uint64_t... Keys>
+        class key_list {
+            template<std::size_t Index, std::uint64_t Key>
+            static void _assign_single(XORSTR_VOLATILE std::uint64_t* buffer)
+            {
+                buffer[Index] = Key;
+            }
+
+        public:
+            template<std::size_t... Indices>
+            static void assign(XORSTR_VOLATILE std::uint64_t* buffer,
+                               std::index_sequence<Indices...>)
+            {
+                (_assign_single<Indices, Keys>(buffer), ...);
+            }
+        };
+
         template<class>
-        struct key_storage {};
+        struct key_list_builder {};
 
         template<std::size_t... Indices>
-        struct key_storage<std::index_sequence<Indices...>> {
-            constexpr static std::size_t size = sizeof... (Indices);
-            alignas(_buffer_align<size * 8>()) XORSTR_VOLATILE std::uint64_t values[size];
-
-            template<class... Args>
-            XORSTR_FORCEINLINE static constexpr void _dummy(Args...) noexcept {}
-
-            template<std::size_t I>
-            XORSTR_FORCEINLINE char _assign() noexcept { values[I] = key8<I>(); return 0; }
-
-            XORSTR_FORCEINLINE key_storage() noexcept { _dummy(_assign<Indices>()...); }
+        struct key_list_builder<std::index_sequence<Indices...>> {
+            using type = key_list<key8<Indices>()...>;
         };
 
     } // namespace detail
 
-    template<class T>
+    template<class T, class K>
     struct xor_string {
         alignas(detail::buffer_align<T>())
             XORSTR_VOLATILE std::uint64_t _storage[detail::buffer_size<T>()];
 
-        template<std::size_t N, class Keys>
-        XORSTR_FORCEINLINE void _crypt(Keys& keys) noexcept
+        template<std::size_t N>
+        XORSTR_FORCEINLINE void _crypt(XORSTR_VOLATILE std::uint64_t* keys) noexcept
         {
             if constexpr(detail::buffer_size<T>() > N) {
 #ifndef JM_XORSTR_DISABLE_AVX_INTRINSICS
                 if constexpr((detail::buffer_size<T>() - N) >= 4) {
                     _mm256_store_si256(
                         (__m256i*)(&_storage[N]),
-                        _mm256_xor_si256(_mm256_load_si256((const __m256i*)(&_storage[N])),
-                                         _mm256_load_si256((const __m256i*)(keys.values + N))));
+                        _mm256_xor_si256(
+                            _mm256_load_si256((const __m256i*)(&_storage[N])),
+                            _mm256_load_si256((const __m256i*)(keys + N))));
                     _crypt<N + 4>(keys);
                 }
                 else
@@ -258,7 +277,7 @@ namespace jm {
                     _mm_store_si128(
                         (__m128i*)(&_storage[N]),
                         _mm_xor_si128(_mm_load_si128((const __m128i*)(&_storage[N])),
-                                      _mm_load_si128((const __m128i*)(keys.values + N))));
+                                      _mm_load_si128((const __m128i*)(keys + N))));
                     _crypt<N + 2>(keys);
                 }
             }
@@ -291,11 +310,16 @@ namespace jm {
 
         XORSTR_FORCEINLINE xor_string() noexcept { _copy<0>(); }
 
-        XORSTR_FORCEINLINE constexpr size_type size() const noexcept { return T::size - 1; }
+        XORSTR_FORCEINLINE constexpr size_type size() const noexcept
+        {
+            return T::size - 1;
+        }
 
         XORSTR_FORCEINLINE void crypt() noexcept
         {
-            detail::key_storage<std::make_index_sequence<detail::buffer_size<T>()>> keys;
+            alignas(detail::buffer_align<T>())
+                XORSTR_VOLATILE std::uint64_t keys[detail::buffer_size<T>()];
+            K::assign(keys, std::make_index_sequence<detail::buffer_size<T>()>{});
             _crypt<0>(keys);
         }
 
