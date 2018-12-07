@@ -230,14 +230,14 @@ namespace jm {
     };
 
     template<class Tstr, std::size_t... StringIndices, std::size_t... KeyIndices>
-    XORSTR_FORCEINLINE constexpr xor_string<
-        detail::tstring_<Tstr().value[StringIndices]...>,
-        detail::key8<KeyIndices>()...>
+    XORSTR_FORCEINLINE constexpr auto
     make_xorstr(Tstr,
                 std::index_sequence<StringIndices...>,
                 std::index_sequence<KeyIndices...>) noexcept
     {
-        return {};
+        return xor_string<
+            detail::tstring_<Tstr().value[StringIndices]...>,
+            detail::key8<KeyIndices>()...>{};
     }
 
 } // namespace jm
