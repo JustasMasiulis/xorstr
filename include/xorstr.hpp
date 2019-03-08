@@ -24,12 +24,7 @@
 
 #define xorstr(str)                                              \
     ::jm::make_xorstr(                                           \
-        []() {                                                   \
-            struct {                                             \
-                const std::decay_t<decltype(*str)>* value = str; \
-            } a;                                                 \
-            return a;                                            \
-        },                                                       \
+        []() { return str; },                                    \
         std::make_index_sequence<sizeof(str) / sizeof(*str)>{},  \
         std::make_index_sequence<::jm::detail::_buffer_size<sizeof(str)>()>{})
 #define xorstr_(str) xorstr(str).crypt_get()
@@ -245,8 +240,7 @@ namespace jm {
                 std::index_sequence<StringIndices...>,
                 std::index_sequence<KeyIndices...>) noexcept
     {
-        using str_t = decltype(str_lambda());
-        return xor_string<detail::tstring_<str_t{}.value[StringIndices]...>,
+        return xor_string<detail::tstring_<str_lambda()[StringIndices]...>,
                           detail::_ki<KeyIndices, detail::key8<KeyIndices>()>...>{};
     }
 
