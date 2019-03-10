@@ -148,7 +148,7 @@ namespace jm {
         alignas(T::buffer_align) std::uint64_t _storage[T::buffer_size];
 
         // _single functions needed because MSVC crashes without them
-        XORSTR_FORCEINLINE void _crypt_256_single(std::uint64_t* keys,
+        XORSTR_FORCEINLINE void _crypt_256_single(const std::uint64_t* keys,
                                                   std::uint64_t* storage) noexcept
 
         {
@@ -160,23 +160,23 @@ namespace jm {
         }
 
         template<std::size_t... Idxs>
-        XORSTR_FORCEINLINE void _crypt_256(std::uint64_t* keys,
+        XORSTR_FORCEINLINE void _crypt_256(const std::uint64_t* keys,
                                            std::index_sequence<Idxs...>) noexcept
         {
             (_crypt_256_single(keys + Idxs * 4, _storage + Idxs * 4), ...);
         }
 
-        XORSTR_FORCEINLINE void _crypt_128_single(std::uint64_t* keys,
+        XORSTR_FORCEINLINE void _crypt_128_single(const std::uint64_t* keys,
                                                   std::uint64_t* storage) noexcept
         {
             _mm_store_si128(
-                reinterpret_cast<__m128i*>(_storage),
+                reinterpret_cast<__m128i*>(storage),
                 _mm_xor_si128(_mm_load_si128(reinterpret_cast<const __m128i*>(storage)),
                               _mm_load_si128(reinterpret_cast<const __m128i*>(keys))));
         }
 
         template<std::size_t... Idxs>
-        XORSTR_FORCEINLINE void _crypt_128(std::uint64_t* keys,
+        XORSTR_FORCEINLINE void _crypt_128(const std::uint64_t* keys,
                                            std::index_sequence<Idxs...>) noexcept
         {
             (_crypt_128_single(keys + Idxs * 2, _storage + Idxs * 2), ...);
