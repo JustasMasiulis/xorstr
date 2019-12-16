@@ -13,7 +13,7 @@ xs.size(); // returns string size
 # noteworthy things
 * All keys are 64bit and generated during compile time.
 * Data blocks go in increments of 16 bytes so some space may be wasted.
-* The code has been crafter so that all the data would be embedded directly into code and not stored on .rdata and such.
+* The code has been crafted so that all the data would be embedded directly into code and not stored on .rdata and such.
 * The entirety of string encryption and decryption will be inlined.
 
 # supported compilers and platforms
