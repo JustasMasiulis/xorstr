@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 - 2018 Justas Masiulis
+ * Copyright 2017 - 2020 Justas Masiulis
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -195,7 +195,7 @@ namespace jm {
         using value_type    = typename T::value_type;
         using size_type     = std::size_t;
         using pointer       = value_type*;
-        using const_pointer = const pointer;
+        using const_pointer = const value_type*;
 
         XORSTR_FORCEINLINE xor_string() noexcept { _copy(); }
 
@@ -227,10 +227,15 @@ namespace jm {
             return reinterpret_cast<const_pointer>(_storage);
         }
 
-        XORSTR_FORCEINLINE const_pointer crypt_get() noexcept
+        XORSTR_FORCEINLINE pointer get() noexcept
+        {
+            return reinterpret_cast<pointer>(_storage);
+        }
+
+        XORSTR_FORCEINLINE pointer crypt_get() noexcept
         {
             crypt();
-            return reinterpret_cast<const_pointer>(_storage);
+            return reinterpret_cast<pointer>(_storage);
         }
     };
 
