@@ -107,22 +107,22 @@ namespace jm {
         // loads up to 8 characters of string into uint64 and xors it with the key
         template<class T>
         XORSTR_FORCEINLINE constexpr std::uint64_t
-        load_xored_str8(std::uint64_t key, std::size_t index) noexcept
+        load_xored_str8(std::uint64_t key, std::size_t idx) noexcept
         {
             using cast_type = typename unsigned_<sizeof(typename T::value_type)>::type;
             constexpr auto value_size = sizeof(typename T::value_type);
+            constexpr auto idx_offset = 8 / value_size;
 
             std::uint64_t value = key;
-
-            // puts the string into 64 bit integer blocks in a constexpr
-            // fashion
-            for(std::size_t i = 0; i < (8 / value_size) && i + index * 8 < T::size; ++i)
-                value ^= (std::uint64_t{ static_cast<cast_type>(T::str[i + index * 8]) }
-                          << ((i % (8 / value_size)) * 8 * value_size));
+            for(std::size_t i = 0; i < idx_offset && i + idx * idx_offset < T::size; ++i)
+                value ^=
+                    (std::uint64_t{ static_cast<cast_type>(T::str[i + idx * idx_offset]) }
+                     << ((i % idx_offset) * 8 * value_size));
 
             return value;
         }
 
+        // forces compiler to use registers instead of stuffing constants in rdata
         XORSTR_FORCEINLINE std::uint64_t load_from_reg(std::uint64_t value) noexcept
         {
 #if defined(__clang__) || defined(__GNUC__)
