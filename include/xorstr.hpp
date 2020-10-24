@@ -150,12 +150,12 @@ namespace jm {
                 _mm_store_si128(
                     reinterpret_cast<__m128i*>(_storage + sizeof...(Keys) - 2),
                     _mm_xor_si128(_mm_load_si128(reinterpret_cast<const __m128i*>(_storage + sizeof...(Keys) - 2)),
-                                _mm_load_si128(reinterpret_cast<const __m128i*>(keys + sizeof...(Keys) - 2))));
+                                  _mm_load_si128(reinterpret_cast<const __m128i*>(keys + sizeof...(Keys) - 2))));
 #else
         ((Indices >= sizeof(_storage) / 16 ? static_cast<void>(0) : _mm_store_si128(
             reinterpret_cast<__m128i*>(_storage) + Indices,
             _mm_xor_si128(_mm_load_si128(reinterpret_cast<const __m128i*>(_storage) + Indices),
-                            _mm_load_si128(reinterpret_cast<const __m128i*>(keys) + Indices)))), ...);
+                          _mm_load_si128(reinterpret_cast<const __m128i*>(keys) + Indices)))), ...);
 #endif
         }
 
@@ -171,7 +171,35 @@ namespace jm {
 
         XORSTR_FORCEINLINE pointer crypt_get() noexcept
         {
-            crypt();
+            // crypt() function inlined by hand, because MSVC linker chokes when you have a lot of strings
+            // on 32 bit builds, so don't blame me for shit code :pepekms:
+#if defined(__clang__)
+            alignas(alignment)
+                std::uint64_t arr[]{ JM_XORSTR_LOAD_FROM_REG(Keys)... };
+            std::uint64_t*    keys =
+                (std::uint64_t*)JM_XORSTR_LOAD_FROM_REG((std::uint64_t)arr);
+#else
+            alignas(alignment) std::uint64_t keys[]{ JM_XORSTR_LOAD_FROM_REG(Keys)... };
+#endif
+
+#ifndef JM_XORSTR_DISABLE_AVX_INTRINSICS
+            ((Indices >= sizeof(_storage) / 32 ? static_cast<void>(0) : _mm256_store_si256(
+                reinterpret_cast<__m256i*>(_storage) + Indices,
+                _mm256_xor_si256(
+                    _mm256_load_si256(reinterpret_cast<const __m256i*>(_storage) + Indices),
+                    _mm256_load_si256(reinterpret_cast<const __m256i*>(keys) + Indices)))), ...);
+
+            if constexpr(sizeof(_storage) % 32 != 0)
+                _mm_store_si128(
+                    reinterpret_cast<__m128i*>(_storage + sizeof...(Keys) - 2),
+                    _mm_xor_si128(_mm_load_si128(reinterpret_cast<const __m128i*>(_storage + sizeof...(Keys) - 2)),
+                                  _mm_load_si128(reinterpret_cast<const __m128i*>(keys + sizeof...(Keys) - 2))));
+#else
+        ((Indices >= sizeof(_storage) / 16 ? static_cast<void>(0) : _mm_store_si128(
+            reinterpret_cast<__m128i*>(_storage) + Indices,
+            _mm_xor_si128(_mm_load_si128(reinterpret_cast<const __m128i*>(_storage) + Indices),
+                          _mm_load_si128(reinterpret_cast<const __m128i*>(keys) + Indices)))), ...);
+#endif
             return (pointer)(_storage);
         }
     };
