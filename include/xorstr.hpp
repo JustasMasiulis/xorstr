@@ -206,7 +206,7 @@ namespace jm {
 
     template<class L, std::size_t Size, std::size_t... Indices>
     xor_string(L l, std::integral_constant<std::size_t, Size>, std::index_sequence<Indices...>) -> xor_string<
-                std::remove_reference_t<decltype(l()[0])>,
+                std::remove_const_t<std::remove_reference_t<decltype(l()[0])>>,
                 Size,
                 std::integer_sequence<std::uint64_t, detail::key8<Indices>()...>,
                 std::index_sequence<Indices...>>;
