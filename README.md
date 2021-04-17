@@ -1,13 +1,42 @@
 ## xorstr
 A heavily vectorized c++17 compile time string encryption.
 
-# usage
+# quick example
 ```cpp
-auto xs = xorstr("Adasdads"); // xorstr(L"Adasdads") supported too
-xs.crypt(); // does a pass of xor encryption
-xs.get(); // returns pointer to data
-xs.crypt_get(); // same as calling crypt() and then get()
-xs.size(); // returns string size
+int main() {
+    std::puts(xorstr_("an extra long hello_world"));
+}
+```
+
+# API
+```cpp
+// This macro creates an encrypted xor_string string instance.
+#define xorstr(string) xor_string<...>{string}
+
+// For convenience sake there is also a macro to instantly decrypt the string
+#define xorstr_(string) xorstr(string).crypt_get()
+
+struct xor_string<CharType, ...> {
+    using size_type     = std::size_t;
+    using value_type    = CharT;
+    using pointer       = value_type*;
+    using const_pointer = const value_type*;
+    
+    // Returns string size in characters, not including null terminator.
+    constexpr size_type size() const;
+    
+    // Runs the encryption/decryption algorithm on the internal storage.
+    void crypt() noexcept;
+    
+    // Returns const pointer to the storage, without doing any modifications to it.
+    const_pointer get() const;
+    
+    // Returns non const pointer to the storage, without doing any modifications to it.
+    pointer get();
+
+    // Runs crypt() and returns the pointer to the internal storage.
+    pointer crypt_get();
+}
 ```
 
 # noteworthy things
@@ -21,14 +50,7 @@ Tested to be working on clang 5.0+, gcc 7.1+ and MSVC v141.
 If your CPU does not support AVX define JM_XORSTR_DISABLE_AVX_INTRINSICS to only use SSE.
 
 # example assembly output
-Input code
-```cpp
-int main() {
-    // or alternatively xorstr_(...) which includes crypt_get call
-    std::puts(xorstr("an extra long hello_world").crypt_get());
-}
-```
-Output of gcc (trunk)
+Output of gcc (trunk) from the quick example
 ```asm
 main:
   movabs rax, -4762152789334367252
