@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 - 2020 Justas Masiulis
+ * Copyright 2017 - 2021 Justas Masiulis
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,14 @@
 #ifndef JM_XORSTR_HPP
 #define JM_XORSTR_HPP
 
+#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
+#include <arm_neon.h>
+#elif defined(_M_X64) || defined(__amd64__) || defined(_M_IX86) || defined(__i386__)
 #include <immintrin.h>
+#else
+#error Unsupported platform
+#endif
+
 #include <cstdint>
 #include <cstddef>
 #include <utility>
@@ -130,6 +137,7 @@ namespace jm {
 
         XORSTR_FORCEINLINE void crypt() noexcept
         {
+            // everything is inlined by hand because a certain compiler with a certain linker is _very_ slow
 #if defined(__clang__)
             alignas(alignment)
                 std::uint64_t arr[]{ JM_XORSTR_LOAD_FROM_REG(Keys)... };
@@ -139,7 +147,20 @@ namespace jm {
             alignas(alignment) std::uint64_t keys[]{ JM_XORSTR_LOAD_FROM_REG(Keys)... };
 #endif
 
-#ifndef JM_XORSTR_DISABLE_AVX_INTRINSICS
+#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
+#if defined(__clang__)
+            ((Indices >= sizeof(_storage) / 16 ? static_cast<void>(0) : __builtin_neon_vst1q_v(
+                                    reinterpret_cast<uint64_t*>(_storage) + Indices * 2,
+                                    veorq_u64(__builtin_neon_vld1q_v(reinterpret_cast<const uint64_t*>(_storage) + Indices * 2, 51),
+                                              __builtin_neon_vld1q_v(reinterpret_cast<const uint64_t*>(keys) + Indices * 2, 51)),
+                                    51)), ...);
+#else // GCC, MSVC
+            ((Indices >= sizeof(_storage) / 16 ? static_cast<void>(0) : vst1q_u64(
+                        reinterpret_cast<uint64_t*>(_storage) + Indices * 2,
+                        veorq_u64(vld1q_u64(reinterpret_cast<const uint64_t*>(_storage) + Indices * 2),
+                                  vld1q_u64(reinterpret_cast<const uint64_t*>(keys) + Indices * 2)))), ...);
+#endif
+#elif !defined(JM_XORSTR_DISABLE_AVX_INTRINSICS)
             ((Indices >= sizeof(_storage) / 32 ? static_cast<void>(0) : _mm256_store_si256(
                 reinterpret_cast<__m256i*>(_storage) + Indices,
                 _mm256_xor_si256(
@@ -171,8 +192,7 @@ namespace jm {
 
         XORSTR_FORCEINLINE pointer crypt_get() noexcept
         {
-            // crypt() function inlined by hand, because MSVC linker chokes when you have a lot of strings
-            // on 32 bit builds, so don't blame me for shit code :pepekms:
+            // crypt() is inlined by hand because a certain compiler with a certain linker is _very_ slow
 #if defined(__clang__)
             alignas(alignment)
                 std::uint64_t arr[]{ JM_XORSTR_LOAD_FROM_REG(Keys)... };
@@ -182,7 +202,20 @@ namespace jm {
             alignas(alignment) std::uint64_t keys[]{ JM_XORSTR_LOAD_FROM_REG(Keys)... };
 #endif
 
-#ifndef JM_XORSTR_DISABLE_AVX_INTRINSICS
+#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
+#if defined(__clang__)
+            ((Indices >= sizeof(_storage) / 16 ? static_cast<void>(0) : __builtin_neon_vst1q_v(
+                                    reinterpret_cast<uint64_t*>(_storage) + Indices * 2,
+                                    veorq_u64(__builtin_neon_vld1q_v(reinterpret_cast<const uint64_t*>(_storage) + Indices * 2, 51),
+                                              __builtin_neon_vld1q_v(reinterpret_cast<const uint64_t*>(keys) + Indices * 2, 51)),
+                                    51)), ...);
+#else // GCC, MSVC
+            ((Indices >= sizeof(_storage) / 16 ? static_cast<void>(0) : vst1q_u64(
+                        reinterpret_cast<uint64_t*>(_storage) + Indices * 2,
+                        veorq_u64(vld1q_u64(reinterpret_cast<const uint64_t*>(_storage) + Indices * 2),
+                                  vld1q_u64(reinterpret_cast<const uint64_t*>(keys) + Indices * 2)))), ...);
+#endif
+#elif !defined(JM_XORSTR_DISABLE_AVX_INTRINSICS)
             ((Indices >= sizeof(_storage) / 32 ? static_cast<void>(0) : _mm256_store_si256(
                 reinterpret_cast<__m256i*>(_storage) + Indices,
                 _mm256_xor_si256(
@@ -200,6 +233,7 @@ namespace jm {
             _mm_xor_si128(_mm_load_si128(reinterpret_cast<const __m128i*>(_storage) + Indices),
                           _mm_load_si128(reinterpret_cast<const __m128i*>(keys) + Indices)))), ...);
 #endif
+
             return (pointer)(_storage);
         }
     };
