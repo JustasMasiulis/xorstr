@@ -42,7 +42,7 @@
 #if defined(__clang__) || defined(__GNUC__)
 #define JM_XORSTR_LOAD_FROM_REG(x) ::jm::detail::load_from_reg(x)
 #else
-#define JM_XORSTR_LOAD_FROM_REG(x) (x)
+#define JM_XORSTR_LOAD_FROM_REG
 #endif
 
 namespace jm {
@@ -99,11 +99,6 @@ namespace jm {
             return value;
         }
 
-        template<std::uint64_t V>
-        struct uint64_v {
-            constexpr static std::uint64_t value = V;
-        };
-
     } // namespace detail
 
     template<class CharT, std::size_t Size, class Keys, class Indices>
@@ -127,7 +122,7 @@ namespace jm {
 
         template<class L>
         XORSTR_FORCEINLINE xor_string(L l, std::integral_constant<std::size_t, Size>, std::index_sequence<Indices...>) noexcept
-            : _storage{ JM_XORSTR_LOAD_FROM_REG(detail::uint64_v<detail::load_xored_str8<Size>(Keys, Indices, l())>::value)... }
+            : _storage{ JM_XORSTR_LOAD_FROM_REG((std::integral_constant<std::uint64_t, detail::load_xored_str8<Size>(Keys, Indices, l())>::value))... }
         {}
 
         XORSTR_FORCEINLINE constexpr size_type size() const noexcept
