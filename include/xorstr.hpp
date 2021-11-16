@@ -77,15 +77,12 @@ namespace jm {
         XORSTR_FORCEINLINE constexpr std::uint64_t
         load_xored_str8(std::uint64_t key, std::size_t idx, const CharT* str) noexcept
         {
-            using cast_type = typename std::make_unsigned<CharT>::type;
-            constexpr auto value_size = sizeof(CharT);
-            constexpr auto idx_offset = 8 / value_size;
+            constexpr std::size_t value_size = sizeof(CharT);
+            constexpr std::size_t idx_offset = 8 / value_size;
 
             std::uint64_t value = key;
             for(std::size_t i = 0; i < idx_offset && i + idx * idx_offset < N; ++i)
-                value ^=
-                    (std::uint64_t{ static_cast<cast_type>(str[i + idx * idx_offset]) }
-                     << ((i % idx_offset) * 8 * value_size));
+                value ^= (static_cast<std::uint64_t>(str[i + idx * idx_offset]) << ((i % idx_offset) * 8 * value_size));
 
             return value;
         }
