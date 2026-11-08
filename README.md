@@ -18,7 +18,7 @@ int main() {
 
 struct xor_string<CharType, ...> {
     using size_type     = std::size_t;
-    using value_type    = CharT;
+    using value_type    = CharType;
     using pointer       = value_type*;
     using const_pointer = const value_type*;
     
@@ -39,14 +39,29 @@ struct xor_string<CharType, ...> {
 }
 ```
 
+# build and test
+```bash
+cmake -S . -B build -DXORSTR_BUILD_TESTS=ON
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
+
+To force non-AVX code paths:
+```bash
+cmake -S . -B build-noavx -DXORSTR_BUILD_TESTS=ON -DCMAKE_CXX_FLAGS="-DJM_XORSTR_DISABLE_AVX_INTRINSICS"
+cmake --build build-noavx --parallel
+ctest --test-dir build-noavx --output-on-failure
+```
+
 # noteworthy things
 * All keys are 64bit and generated during compile time.
+* Every `xorstr(...)` call site gets a distinct compile-time seed, so identical literals in different locations do not reuse the same keystream.
 * Data blocks go in increments of 16 bytes so some space may be wasted.
 * The code has been crafted so that all the data would be embedded directly into code and not stored on .rdata and such.
 * The entirety of string encryption and decryption will be inlined.
 
 # supported compilers and platforms
-Tested to be working on clang 5.0+, gcc 7.1+ and MSVC v141.
+Tested to be working on clang 5.0+, gcc 7.1+ and MSVC v141+.
 If your CPU does not support AVX define JM_XORSTR_DISABLE_AVX_INTRINSICS to only use SSE.
 
 # example assembly output

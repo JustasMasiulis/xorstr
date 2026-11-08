@@ -30,7 +30,13 @@
 #include <utility>
 #include <type_traits>
 
-#define xorstr(str) ::jm::xor_string([]() { return str; }, std::integral_constant<std::size_t, sizeof(str) / sizeof(*str)>{}, std::make_index_sequence<::jm::detail::_buffer_size<sizeof(str)>()>{})
+#if !defined(__COUNTER__)
+#define JM_XORSTR_COUNTER __LINE__
+#else
+#define JM_XORSTR_COUNTER __COUNTER__
+#endif
+
+#define xorstr(str) ::jm::xor_string([]() { return str; }, std::integral_constant<std::size_t, sizeof(str) / sizeof(*str)>{}, std::integral_constant<std::uint64_t, ::jm::detail::key_seed(JM_XORSTR_COUNTER, __LINE__)>{}, std::make_index_sequence<::jm::detail::_buffer_size<sizeof(str)>()>{})
 #define xorstr_(str) xorstr(str).crypt_get()
 
 #ifdef _MSC_VER
@@ -58,12 +64,27 @@ namespace jm {
             return value;
         }
 
-        template<std::size_t S>
+        XORSTR_FORCEINLINE constexpr std::uint64_t mix64(std::uint64_t value) noexcept
+        {
+            value ^= value >> 30;
+            value *= 0xbf58476d1ce4e5b9ull;
+            value ^= value >> 27;
+            value *= 0x94d049bb133111ebull;
+            value ^= value >> 31;
+            return value;
+        }
+
+        XORSTR_FORCEINLINE constexpr std::uint64_t key_seed(std::uint64_t counter, std::uint64_t line) noexcept
+        {
+            constexpr auto compiler_seed = static_cast<std::uint64_t>(key4<2166136261u>()) |
+                                           (static_cast<std::uint64_t>(key4<709607u>()) << 32);
+            return mix64(compiler_seed ^ (counter * 0x9e3779b97f4a7c15ull) ^ (line * 0x100000001b3ull));
+        }
+
+        template<std::uint64_t Seed, std::size_t S>
         XORSTR_FORCEINLINE constexpr std::uint64_t key8()
         {
-            constexpr auto first_part  = key4<2166136261 + S>();
-            constexpr auto second_part = key4<first_part>();
-            return (static_cast<std::uint64_t>(first_part) << 32) | second_part;
+            return mix64(Seed + S * 0x9e3779b97f4a7c15ull);
         }
 
         // loads up to 8 characters of string into uint64 and xors it with the key
@@ -117,8 +138,8 @@ namespace jm {
         using pointer       = CharT*;
         using const_pointer = const CharT*;
 
-        template<class L>
-        XORSTR_FORCEINLINE xor_string(L l, std::integral_constant<std::size_t, Size>, std::index_sequence<Indices...>) noexcept
+        template<class L, std::uint64_t Seed>
+        XORSTR_FORCEINLINE xor_string(L l, std::integral_constant<std::size_t, Size>, std::integral_constant<std::uint64_t, Seed>, std::index_sequence<Indices...>) noexcept
             : _storage{ ::jm::detail::load_from_reg((std::integral_constant<std::uint64_t, detail::load_xored_str8<Size>(Keys, Indices, l())>::value))... }
         {}
 
@@ -230,11 +251,11 @@ namespace jm {
         }
     };
 
-    template<class L, std::size_t Size, std::size_t... Indices>
-    xor_string(L l, std::integral_constant<std::size_t, Size>, std::index_sequence<Indices...>) -> xor_string<
+    template<class L, std::size_t Size, std::uint64_t Seed, std::size_t... Indices>
+    xor_string(L l, std::integral_constant<std::size_t, Size>, std::integral_constant<std::uint64_t, Seed>, std::index_sequence<Indices...>) -> xor_string<
                 std::remove_const_t<std::remove_reference_t<decltype(l()[0])>>,
                 Size,
-                std::integer_sequence<std::uint64_t, detail::key8<Indices>()...>,
+                std::integer_sequence<std::uint64_t, detail::key8<Seed, Indices>()...>,
                 std::index_sequence<Indices...>>;
 
 } // namespace jm

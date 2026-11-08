@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        mode: [default, noavx]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: |
+          if [ "${{ matrix.compiler }}" = "clang" ]; then
+            export CC=clang
+            export CXX=clang++
+          else
+            export CC=gcc
+            export CXX=g++
+          fi
+
+          if [ "${{ matrix.mode }}" = "noavx" ]; then
+            cmake -S . -B build -DXORSTR_BUILD_TESTS=ON -DCMAKE_CXX_FLAGS="-DJM_XORSTR_DISABLE_AVX_INTRINSICS"
+          else
+            cmake -S . -B build -DXORSTR_BUILD_TESTS=ON
+          fi
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
