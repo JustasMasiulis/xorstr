@@ -104,7 +104,7 @@ namespace jm {
     template<class CharT, std::size_t Size, std::uint64_t... Keys, std::size_t... Indices>
     class xor_string<CharT, Size, std::integer_sequence<std::uint64_t, Keys...>, std::index_sequence<Indices...>> {
 #ifndef JM_XORSTR_DISABLE_AVX_INTRINSICS
-        constexpr static inline std::uint64_t alignment = ((Size > 16) ? 32 : 16);    
+        constexpr static inline std::uint64_t alignment = ((Size * sizeof(CharT) > 16) ? 32 : 16);    
 #else
         constexpr static inline std::uint64_t alignment = 16;
 #endif
